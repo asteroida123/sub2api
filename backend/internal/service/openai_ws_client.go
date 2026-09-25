@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -12,6 +13,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/proxytls"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 	openaiwsv2 "github.com/Wei-Shaw/sub2api/internal/service/openai_ws_v2"
 	coderws "github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
@@ -182,7 +185,9 @@ func (d *coderOpenAIWSClientDialer) proxyHTTPClient(proxy string) (*http.Client,
 
 	d.proxyMu.Lock()
 	defer d.proxyMu.Unlock()
-	if entry, ok := d.proxyClients[normalizedProxy]; ok && entry != nil && entry.client != nil {
+	// 代理跳 TLS 豁免开关参与缓存键：翻转后旧客户端自然过期重建
+	cacheKey := normalizedProxy + proxyTLSInsecureCacheKeySuffix()
+	if entry, ok := d.proxyClients[cacheKey]; ok && entry != nil && entry.client != nil {
 		entry.lastUsedUnixNano = now
 		d.proxyHits.Add(1)
 		return entry.client, nil
@@ -196,14 +201,35 @@ func (d *coderOpenAIWSClientDialer) proxyHTTPClient(proxy string) (*http.Client,
 		TLSHandshakeTimeout: 10 * time.Second,
 		ForceAttemptHTTP2:   true,
 	}
+	// 原生 Shadowsocks（P3）：net/http 的 Proxy 不支持 ss 协议，整条 TCP 改走
+	// ss 隧道（wss 的 TLS 握手由 Transport 在隧道上完成，标准库指纹）。
+	if parsedProxyURL != nil && strings.EqualFold(parsedProxyURL.Scheme, "ss") {
+		transport.Proxy = nil
+		transport.ForceAttemptHTTP2 = false
+		transport.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
+			return tlsfingerprint.DialSSContext(ctx, parsedProxyURL, addr)
+		}
+	}
+	// IP 直连代理节点证书无 IP SANs → 默认校验必失败；仅豁免代理 hop，
+	// wss 到上游目标的证书校验不受影响（EXPERIMENT-LOG-292 §9）。
+	proxytls.ApplyProxyHopInsecure(transport, parsedProxyURL, func() bool {
+		return SharedProxyTLSInsecureSkipVerify(context.Background())
+	})
 	client := &http.Client{Transport: transport}
-	d.proxyClients[normalizedProxy] = &openAIWSProxyClientEntry{
+	d.proxyClients[cacheKey] = &openAIWSProxyClientEntry{
 		client:           client,
 		lastUsedUnixNano: now,
 	}
 	d.ensureProxyClientCapacityLocked()
 	d.proxyMisses.Add(1)
 	return client, nil
+}
+
+func proxyTLSInsecureCacheKeySuffix() string {
+	if SharedProxyTLSInsecureSkipVerify(context.Background()) {
+		return "|ptls_insecure=1"
+	}
+	return ""
 }
 
 func (d *coderOpenAIWSClientDialer) cleanupProxyClientsLocked(nowUnixNano int64) {

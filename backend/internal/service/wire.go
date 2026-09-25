@@ -303,6 +303,32 @@ func ProvideWindowProbeService(
 	)
 }
 
+// ProvideWindowSessionPoolService 构造满血会话池服务（P2），注入网关并启动采样循环。
+func ProvideWindowSessionPoolService(
+	accountRepo AccountRepository,
+	healthRepo WindowProbeRepository,
+	settingService *SettingService,
+	openAIGatewayService *OpenAIGatewayService,
+) *WindowSessionPoolService {
+	svc := NewWindowSessionPoolService(accountRepo, healthRepo, settingService, openAIGatewayService)
+	openAIGatewayService.SetWindowSessionPoolService(svc)
+	svc.Start()
+	return svc
+}
+
+// ProvideWindowHunterService 构造窗口猎手编排器（P1）并启动自动狩猎循环。
+func ProvideWindowHunterService(
+	probeService *WindowProbeService,
+	proxyRepo ProxyRepository,
+	proxyLatencyCache ProxyLatencyCache,
+	settingService *SettingService,
+	healthRepo WindowProbeRepository,
+) *WindowHunterService {
+	svc := NewWindowHunterService(probeService, proxyRepo, proxyLatencyCache, settingService, healthRepo)
+	svc.StartAutoLoop()
+	return svc
+}
+
 func ProvideGrokQuotaService(
 	accountRepo AccountRepository,
 	proxyRepo ProxyRepository,
@@ -823,6 +849,8 @@ func ProvideSettingService(settingRepo SettingRepository, groupRepo GroupReposit
 		logger.LegacyPrintf("service.setting", "Warning: migrate Grok default text model failed: %v", err)
 	}
 	antigravity.SetUserAgentVersionResolver(svc.GetAntigravityUserAgentVersion)
+	// 代理拨号层共享配置（代理跳 TLS 豁免开关），60s TTL 缓存，热路径不触库
+	BindSharedSettingService(svc)
 	// enforceCodexIdentityHeaders 是所有 Codex 出站路径共用的纯函数收口点，拿不到 ctx，
 	// 故注入无参解析器；解析器内部自带 60s TTL 缓存，热路径不触库。
 	SetCodexCanonicalUserAgentResolver(func() string {
@@ -927,6 +955,8 @@ var ProviderSet = wire.NewSet(
 	ProvideAccountUsageService,
 	ProvideAccountTestService,
 	ProvideWindowProbeService,
+	ProvideWindowSessionPoolService,
+	ProvideWindowHunterService,
 	ProvideUpstreamBillingProbeService,
 	ProvideOllamaCloudUsageService,
 	ProvideOpenCodeGoUsageService,

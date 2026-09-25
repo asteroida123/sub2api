@@ -468,6 +468,8 @@ type OpenAIGatewayService struct {
 	settingService        *SettingService
 	userPlatformQuotaRepo UserPlatformQuotaRepository
 	liveAttestation       liveattestation.Provider
+	// windowSessionPool 满血会话池（P2，可选）：门控模型的 Acquire 策略来源
+	windowSessionPool *WindowSessionPoolService
 	liveAttestationCipher SecretEncryptor
 
 	openaiWSPoolOnce               sync.Once

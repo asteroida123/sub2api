@@ -27,6 +27,7 @@ import (
 	"golang.org/x/net/http2"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/proxytls"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/proxyurl"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/proxyutil"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/servertiming"
@@ -559,7 +560,7 @@ func (s *httpUpstreamService) getClientEntryWithTLS(proxyURL string, accountID i
 	settings = s.applyProfilePoolSettings(settings, upstreamProfile)
 	// TLS 指纹客户端使用独立的缓存键，加 "tls:" 前缀
 	cacheKey := "tls:" + buildCacheKey(isolation, proxyKey, accountID, upstreamProtocolModeDefault)
-	poolKey := buildPoolKey(settings, upstreamProtocolModeDefault) + ":tls"
+	poolKey := buildPoolKey(settings, upstreamProtocolModeDefault) + ":tls" + proxyTLSFlagKeySuffix()
 
 	now := time.Now()
 	nowUnix := now.UnixNano()
@@ -722,8 +723,8 @@ func (s *httpUpstreamService) getClientEntry(proxyURL string, accountID int64, a
 	settings = s.applyProfilePoolSettings(settings, profile)
 	// 构建缓存键（根据隔离策略不同）
 	cacheKey := buildCacheKey(isolation, proxyKey, accountID, protocolMode)
-	// 构建连接池配置键（用于检测配置变更）
-	poolKey := buildPoolKey(settings, protocolMode)
+	// 构建连接池配置键（用于检测配置变更；代理跳 TLS 豁免开关变化时重建客户端）
+	poolKey := buildPoolKey(settings, protocolMode) + proxyTLSFlagKeySuffix()
 
 	now := time.Now()
 	nowUnix := now.UnixNano()
@@ -1373,6 +1374,17 @@ func newUpstreamDialer() *net.Dialer {
 //   - MaxConnsPerHost: 每主机最大连接数（达到后新请求等待）
 //   - IdleConnTimeout: 空闲连接超时（超时后关闭）
 //   - ResponseHeaderTimeout: 等待响应头超时（不影响流式传输）
+//
+// proxyTLSFlagKeySuffix 返回代理跳 TLS 豁免开关的缓存键后缀。
+// 仅在开启时追加：开关翻转（关→开）会使 poolKey 变化，旧客户端按变更检测淘汰重建；
+// 关闭态保持与历史键一致，避免无谓的键空间膨胀。
+func proxyTLSFlagKeySuffix() string {
+	if service.SharedProxyTLSInsecureSkipVerify(context.Background()) {
+		return "|ptls_insecure=1"
+	}
+	return ""
+}
+
 func buildUpstreamTransport(settings poolSettings, proxyURL *url.URL, protocolMode string) (*http.Transport, error) {
 	transport := &http.Transport{
 		DialContext:           newUpstreamDialer().DialContext,
@@ -1402,6 +1414,11 @@ func buildUpstreamTransport(settings poolSettings, proxyURL *url.URL, protocolMo
 	if err := proxyutil.ConfigureTransportProxy(transport, proxyURL); err != nil {
 		return nil, err
 	}
+	// 用户级开关：仅对"到代理这一跳"的证书校验豁免（IP 直连代理节点证书无 IP SANs
+	// 会 x509 报错，等价 curl --proxy-insecure）；到上游目标的 TLS 校验不受影响。
+	proxytls.ApplyProxyHopInsecure(transport, proxyURL, func() bool {
+		return service.SharedProxyTLSInsecureSkipVerify(context.Background())
+	})
 	return transport, nil
 }
 
@@ -1475,6 +1492,11 @@ func buildUpstreamTransportWithTLSFingerprint(settings poolSettings, proxyURL *u
 			slog.Debug("tls_fingerprint_transport_http_connect", "proxy", proxyURL.Host)
 			httpDialer := tlsfingerprint.NewHTTPProxyDialer(profile, proxyURL)
 			transport.DialTLSContext = httpDialer.DialTLSContext
+		case "ss":
+			// 原生 Shadowsocks（P3）：ss 隧道 + utls 指纹握手
+			slog.Debug("tls_fingerprint_transport_ss", "proxy", proxyURL.Host)
+			ssDialer := tlsfingerprint.NewSSProxyDialer(profile, proxyURL)
+			transport.DialTLSContext = ssDialer.DialTLSContext
 		default:
 			// 未知代理类型，回退到普通代理配置（无 TLS 指纹）
 			slog.Debug("tls_fingerprint_transport_unknown_scheme_fallback", "scheme", scheme)

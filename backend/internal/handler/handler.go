@@ -22,6 +22,8 @@ type AdminHandlers struct {
 	CNProvider             *admin.CNProviderHandler
 	Proxy                  *admin.ProxyHandler
 	WindowProbe            *admin.WindowProbeHandler
+	WindowHunter           *admin.WindowHunterHandler
+	WindowSessionPool      *admin.WindowSessionPoolHandler
 	Redeem                 *admin.RedeemHandler
 	Promo                  *admin.PromoHandler
 	Setting                *admin.SettingHandler

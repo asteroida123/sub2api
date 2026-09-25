@@ -81,6 +81,13 @@ type openAIWSAcquireRequest struct {
 	ForceNewConn bool
 	// ForcePreferredConn: 强制本次只使用 PreferredConnID，禁止漂移到其它连接。
 	ForcePreferredConn bool
+
+	// ---- 窗口猎手 P2：满血会话池调度 ----
+	// RequireFullPower: 只接受已标记满血的连接；无可用时返回 errOpenAIWSFullPowerUnavailable，
+	// 不新建连接（新连接在降智节点上必然降智，无法满足门控语义）。
+	RequireFullPower bool
+	// MarkFullPowerUntil: 新建连接时打满血标记（窗口命中后预建会话场景）。
+	MarkFullPowerUntil time.Time
 }
 
 type openAIWSHandshakeCompatibilityKey struct {
@@ -308,6 +315,20 @@ type openAIWSConn struct {
 	createdAtNano atomic.Int64
 	lastUsedNano  atomic.Int64
 	prewarmed     atomic.Bool
+
+	// ---- 窗口猎手 P2：满血会话池标记 ----
+	// proxyID 关联出口代理（0=直连），采样劣化时回写 (账号,出口) 健康状态机。
+	proxyID atomic.Int64
+	// fullPowerUntilNano 满血窗口截止（UnixNano；0=未标记）。
+	// 窗口猎手命中后预建的会话打标（≈established+会话寿命）；采样劣化即清零并退役。
+	fullPowerUntilNano atomic.Int64
+	// lastSampleAtNano 最近一次指纹采样时间；degradedFlag 采样判定降智。
+	lastSampleAtNano atomic.Int64
+	degradedFlag     atomic.Bool
+
+	sampleMu           sync.Mutex
+	lastSampleAnswer   string
+	sampleFailureCount int
 }
 
 func newOpenAIWSConn(id string, _ int64, ws openAIWSClientConn, handshakeHeaders http.Header) *openAIWSConn {
@@ -906,6 +927,242 @@ func (p *openAIWSConnPool) setClientDialerForTest(dialer openAIWSClientDialer) {
 }
 
 // Close 停止后台 worker 并关闭所有空闲连接，应在优雅关闭时调用。
+// ============================================================================
+// 窗口猎手 P2：满血会话池
+// ============================================================================
+
+// errOpenAIWSFullPowerUnavailable RequireFullPower 请求下无已标记满血的可用连接。
+var errOpenAIWSFullPowerUnavailable = errors.New("openai ws: no full-power connection available")
+
+// ---- 连接健康标记 ----
+
+// MarkFullPowerUntil 打满血标记（预建会话场景）。
+func (c *openAIWSConn) MarkFullPowerUntil(t time.Time) {
+	if c == nil || t.IsZero() {
+		return
+	}
+	c.fullPowerUntilNano.Store(t.UnixNano())
+}
+
+// FullPowerUntil 满血截止时间；零值表示未标记。
+func (c *openAIWSConn) FullPowerUntil() time.Time {
+	if c == nil {
+		return time.Time{}
+	}
+	nano := c.fullPowerUntilNano.Load()
+	if nano <= 0 {
+		return time.Time{}
+	}
+	return time.Unix(0, nano)
+}
+
+// isFullPowerAt 当前时点是否处于已标记的满血窗口内。
+func (c *openAIWSConn) isFullPowerAt(now time.Time) bool {
+	if c == nil || c.degradedFlag.Load() {
+		return false
+	}
+	until := c.FullPowerUntil()
+	return !until.IsZero() && now.Before(until)
+}
+
+// ProxyID 连接关联的出口代理 ID（0=直连）。
+func (c *openAIWSConn) ProxyID() int64 {
+	if c == nil {
+		return 0
+	}
+	return c.proxyID.Load()
+}
+
+// markSampled 记录一次采样结果。
+func (c *openAIWSConn) markSampled(now time.Time, answer string, degraded bool) {
+	if c == nil {
+		return
+	}
+	c.lastSampleAtNano.Store(now.UnixNano())
+	c.sampleMu.Lock()
+	c.lastSampleAnswer = answer
+	if degraded {
+		c.sampleFailureCount = 0
+	}
+	c.sampleMu.Unlock()
+	if degraded {
+		c.degradedFlag.Store(true)
+		c.fullPowerUntilNano.Store(0)
+	}
+}
+
+// recordSampleFailure 记录采样失败（网络/超时），连续失败达到阈值视为不可信、清除满血标记。
+func (c *openAIWSConn) recordSampleFailure(now time.Time, threshold int) {
+	if c == nil {
+		return
+	}
+	c.sampleMu.Lock()
+	c.sampleFailureCount++
+	failed := c.sampleFailureCount
+	c.sampleMu.Unlock()
+	c.lastSampleAtNano.Store(now.UnixNano())
+	if threshold > 0 && failed >= threshold {
+		c.fullPowerUntilNano.Store(0)
+	}
+}
+
+// ---- 满血优先挑选 ----
+
+// preferFullPowerOver 返回 a 是否应优先于 b（都在满血兼容挑选语境下）：
+// 满血 > 未标记 > 已降智；同级比 waiter 数与最近使用时间（与原排序一致）。
+func (c *openAIWSConn) fullPowerRank(now time.Time) int {
+	if c == nil {
+		return 2
+	}
+	switch {
+	case c.isFullPowerAt(now):
+		return 0
+	case c.degradedFlag.Load():
+		return 2
+	default:
+		return 1
+	}
+}
+
+// PrewarmFullPowerConns 预建 count 条满血会话存入池（窗口命中后的"多建"动作）。
+// 返回成功建立的连接 ID；单条失败即停（并发1纪律下，失败通常意味着窗口/出口已变）。
+func (p *openAIWSConnPool) PrewarmFullPowerConns(ctx context.Context, req openAIWSAcquireRequest, count int, fullPowerUntil time.Time) ([]string, error) {
+	if p == nil || req.Account == nil {
+		return nil, errors.New("invalid prewarm request")
+	}
+	if count <= 0 {
+		count = 1
+	}
+	ids := make([]string, 0, count)
+	for i := 0; i < count; i++ {
+		select {
+		case <-ctx.Done():
+			return ids, ctx.Err()
+		default:
+		}
+		clone := cloneOpenAIWSAcquireRequest(req)
+		clone.ForceNewConn = true
+		clone.RequireFullPower = false
+		clone.PreferredConnID = ""
+		clone.ForcePreferredConn = false
+		clone.MarkFullPowerUntil = fullPowerUntil
+		lease, err := p.Acquire(ctx, clone)
+		if err != nil {
+			return ids, err
+		}
+		ids = append(ids, lease.ConnID())
+		lease.Release()
+	}
+	return ids, nil
+}
+
+// OpenAIWSConnHealthSnapshot 满血会话池条目视图（面板/采样器/验收实验共用）。
+type OpenAIWSConnHealthSnapshot struct {
+	AccountID        int64      `json:"account_id"`
+	ConnID           string     `json:"conn_id"`
+	ProxyID          int64      `json:"proxy_id"`
+	EstablishedAt    time.Time  `json:"established_at"`
+	FullPowerUntil   time.Time  `json:"full_power_until"`
+	IsFullPower      bool       `json:"is_full_power"`
+	LastSampleAt     *time.Time `json:"last_sample_at,omitempty"`
+	LastSampleAnswer string     `json:"last_sample_answer"`
+	Degraded         bool       `json:"degraded"`
+	Leased           bool       `json:"leased"`
+	AgeSeconds       float64    `json:"age_seconds"`
+}
+
+// SnapshotConns 返回账号连接池内全部连接的健康快照（可选只看满血标记的）。
+func (p *openAIWSConnPool) SnapshotConns(accountID int64, fullPowerOnly bool) []OpenAIWSConnHealthSnapshot {
+	if p == nil {
+		return nil
+	}
+	now := time.Now()
+	out := make([]OpenAIWSConnHealthSnapshot, 0, 8)
+	collect := func(ap *openAIWSAccountPool, id int64) {
+		ap.mu.Lock()
+		conns := make([]*openAIWSConn, 0, len(ap.conns))
+		for _, conn := range ap.conns {
+			conns = append(conns, conn)
+		}
+		ap.mu.Unlock()
+		for _, conn := range conns {
+			if conn == nil {
+				continue
+			}
+			if fullPowerOnly && !conn.isFullPowerAt(now) && !conn.degradedFlag.Load() {
+				continue
+			}
+			snapshot := OpenAIWSConnHealthSnapshot{
+				AccountID:     id,
+				ConnID:        conn.id,
+				ProxyID:       conn.ProxyID(),
+				EstablishedAt: time.Unix(0, conn.createdAtNano.Load()),
+				FullPowerUntil: func() time.Time {
+					nano := conn.fullPowerUntilNano.Load()
+					if nano <= 0 {
+						return time.Time{}
+					}
+					return time.Unix(0, nano)
+				}(),
+				IsFullPower: conn.isFullPowerAt(now),
+				Degraded:    conn.degradedFlag.Load(),
+				Leased:      conn.isLeased(),
+				AgeSeconds:  conn.age(now).Seconds(),
+			}
+			if nano := conn.lastSampleAtNano.Load(); nano > 0 {
+				t := time.Unix(0, nano)
+				snapshot.LastSampleAt = &t
+			}
+			conn.sampleMu.Lock()
+			snapshot.LastSampleAnswer = conn.lastSampleAnswer
+			conn.sampleMu.Unlock()
+			out = append(out, snapshot)
+		}
+	}
+	if accountID > 0 {
+		if ap, ok := p.getAccountPool(accountID); ok && ap != nil {
+			collect(ap, accountID)
+		}
+		return out
+	}
+	p.accounts.Range(func(key, value any) bool {
+		id, ok := key.(int64)
+		if !ok {
+			return true
+		}
+		ap, ok := value.(*openAIWSAccountPool)
+		if !ok || ap == nil {
+			return true
+		}
+		collect(ap, id)
+		return true
+	})
+	return out
+}
+
+// RetireDegradedConn 采样劣化退役：打降智标，空闲则立刻关停剔除；占用中则等释放后由清理周期收尾。
+func (p *openAIWSConnPool) RetireDegradedConn(accountID int64, connID string) {
+	if p == nil || accountID <= 0 || connID == "" {
+		return
+	}
+	ap, ok := p.getAccountPool(accountID)
+	if !ok || ap == nil {
+		return
+	}
+	ap.mu.Lock()
+	conn := ap.conns[connID]
+	ap.mu.Unlock()
+	if conn == nil {
+		return
+	}
+	conn.degradedFlag.Store(true)
+	conn.fullPowerUntilNano.Store(0)
+	if conn.tryAcquire() {
+		conn.close()
+		p.evictConn(accountID, connID)
+	}
+}
+
 func (p *openAIWSConnPool) Close() {
 	if p == nil {
 		return
@@ -1143,6 +1400,10 @@ func (p *openAIWSConnPool) acquire(ctx context.Context, req openAIWSAcquireReque
 		queueWait = &openAIWSAcquireQueueWait{}
 	}
 
+// fullPowerProtectedCapacity 在窗满血连接顶住了容量压力（不可逐出）：
+// 允许本次请求瞬时超容量拨新连接，未标记连接由清理周期按 rank 优先回收。
+fullPowerProtectedCapacity := false
+
 retryAcquire:
 	accountID := req.Account.ID
 	compatibility := normalizeOpenAIWSHandshakeCompatibility(req.Account, req.Headers)
@@ -1262,6 +1523,46 @@ retryAcquire:
 			p.metrics.acquireReuseTotal.Add(1)
 			p.recordLastSuccessfulAcquire(accountID, acquireGeneration, req)
 			p.ensureTargetIdleAsync(accountID)
+			return lease, nil
+		}
+
+		// 窗口猎手 P2：门控请求只接受已标记满血的空闲连接。
+		// 拿不到就不新建、不排队、不落到未标记/降智连接——降智节点上新旧连接都救不了门控模型。
+		if req.RequireFullPower {
+			now := time.Now()
+			var fullPowerConn *openAIWSConn
+			for _, conn := range ap.conns {
+				if conn == nil || !conn.matchesHandshakeCompatibility(compatibility) || !conn.isFullPowerAt(now) {
+					continue
+				}
+				if conn.tryAcquire() {
+					fullPowerConn = conn
+					break
+				}
+			}
+			if fullPowerConn == nil {
+				p.recordConnPickDuration(time.Since(pickStartedAt))
+				ap.mu.Unlock()
+				closeOpenAIWSConns(evicted)
+				return nil, errOpenAIWSFullPowerUnavailable
+			}
+			connPick := time.Since(pickStartedAt)
+			p.recordConnPickDuration(connPick)
+			ap.mu.Unlock()
+			closeOpenAIWSConns(evicted)
+			if p.shouldHealthCheckConn(fullPowerConn) {
+				if err := fullPowerConn.pingWithTimeout(openAIWSConnHealthCheckTO); err != nil {
+					fullPowerConn.close()
+					p.evictConn(accountID, fullPowerConn.id)
+					if retry < 1 {
+						return p.acquire(ctx, req, retry+1, queueWait)
+					}
+					return nil, err
+				}
+			}
+			lease := &openAIWSConnLease{pool: p, accountID: accountID, conn: fullPowerConn, connPick: connPick, reused: true}
+			p.metrics.acquireReuseTotal.Add(1)
+			p.recordLastSuccessfulAcquire(accountID, acquireGeneration, req)
 			return lease, nil
 		}
 
@@ -1388,13 +1689,18 @@ retryAcquire:
 
 	if req.ForceNewConn && len(ap.conns)+ap.creating >= effectiveMaxConns {
 		if idle := p.pickOldestIdleConnLocked(ap); idle != nil {
-			delete(ap.conns, idle.id)
-			evicted = append(evicted, idle)
-			p.metrics.scaleDownTotal.Add(1)
+			// 窗口猎手 P2：在窗满血连接不可作为腾位牺牲品（rank==2）。
+			if idle.connEvictionRank(time.Now()) < 2 {
+				delete(ap.conns, idle.id)
+				evicted = append(evicted, idle)
+				p.metrics.scaleDownTotal.Add(1)
+			} else {
+				fullPowerProtectedCapacity = true
+			}
 		}
 	}
 
-	if len(ap.conns)+ap.creating < effectiveMaxConns {
+	if len(ap.conns)+ap.creating < effectiveMaxConns || fullPowerProtectedCapacity {
 		connPick := time.Since(pickStartedAt)
 		p.recordConnPickDuration(connPick)
 		ap.creating++
@@ -1539,6 +1845,12 @@ func (p *openAIWSConnPool) recordLastSuccessfulAcquire(accountID int64, generati
 	if !ok || ap == nil {
 		return
 	}
+	// lastAcquire 是后台空闲补建的模板：剥离一次性/窗口池语义字段。
+	// 否则满血预建请求会污染后台补建——强制新建挤掉空闲连接、新连接被误打满血标记
+	//（窗口猎手 P2 实测踩坑：预建后后台补建出的连接全部带上了满血标记）。
+	req.ForceNewConn = false
+	req.RequireFullPower = false
+	req.MarkFullPowerUntil = time.Time{}
 	ap.mu.Lock()
 	if ap.generation != generation {
 		ap.mu.Unlock()
@@ -1548,17 +1860,37 @@ func (p *openAIWSConnPool) recordLastSuccessfulAcquire(accountID int64, generati
 	ap.mu.Unlock()
 }
 
+// connEvictionRank 逐出优先级（窗口猎手 P2）：未标记 0 < 已降智/过窗标记 1 < 在窗满血 2。
+// 满血会话是猎手的稀缺资产，容量压力下最后才被逐出。
+func (c *openAIWSConn) connEvictionRank(now time.Time) int {
+	if c == nil {
+		return 2
+	}
+	if c.degradedFlag.Load() {
+		return 1
+	}
+	if c.isFullPowerAt(now) {
+		return 2
+	}
+	return 0
+}
+
 func (p *openAIWSConnPool) pickOldestIdleConnLocked(ap *openAIWSAccountPool) *openAIWSConn {
 	if ap == nil || len(ap.conns) == 0 {
 		return nil
 	}
 	var oldest *openAIWSConn
+	var oldestRank int
+	now := time.Now()
 	for _, conn := range ap.conns {
 		if conn == nil || conn.isLeased() || conn.waiters.Load() > 0 || p.isConnPinnedLocked(ap, conn.id) {
 			continue
 		}
-		if oldest == nil || conn.lastUsedAt().Before(oldest.lastUsedAt()) {
+		rank := conn.connEvictionRank(now)
+		if oldest == nil || rank < oldestRank ||
+			(rank == oldestRank && conn.lastUsedAt().Before(oldest.lastUsedAt())) {
 			oldest = conn
+			oldestRank = rank
 		}
 	}
 	return oldest
@@ -1572,14 +1904,19 @@ func (p *openAIWSConnPool) pickOldestIdleConnWithoutHandshakeCompatibilityLocked
 		return nil
 	}
 	var oldest *openAIWSConn
+	var oldestRank int
+	now := time.Now()
 	for _, conn := range ap.conns {
 		if conn == nil ||
 			conn.matchesHandshakeCompatibility(compatibility) ||
 			conn.isLeased() || conn.waiters.Load() > 0 || p.isConnPinnedLocked(ap, conn.id) {
 			continue
 		}
-		if oldest == nil || conn.lastUsedAt().Before(oldest.lastUsedAt()) {
+		rank := conn.connEvictionRank(now)
+		if oldest == nil || rank < oldestRank ||
+			(rank == oldestRank && conn.lastUsedAt().Before(oldest.lastUsedAt())) {
 			oldest = conn
+			oldestRank = rank
 		}
 	}
 	return oldest
@@ -1709,7 +2046,14 @@ func (p *openAIWSConnPool) cleanupAccountLocked(ap *openAIWSAccountPool, now tim
 			}
 			idleConns = append(idleConns, conn)
 		}
+		// 冗余回收排序（窗口猎手 P2）：先回收未标记连接，满血在窗连接最后动
+		evictNow := time.Now()
 		sort.SliceStable(idleConns, func(i, j int) bool {
+			ri := idleConns[i].connEvictionRank(evictNow)
+			rj := idleConns[j].connEvictionRank(evictNow)
+			if ri != rj {
+				return ri < rj
+			}
 			return idleConns[i].lastUsedAt().Before(idleConns[j].lastUsedAt())
 		})
 		redundant := len(ap.conns) - maxIdle
@@ -1752,18 +2096,23 @@ func (p *openAIWSConnPool) pickLeastBusyConnLocked(
 	var best *openAIWSConn
 	var bestWaiters int32
 	var bestLastUsed time.Time
+	var bestRank int
+	now := time.Now()
 	for _, conn := range ap.conns {
 		if conn == nil || !conn.matchesHandshakeCompatibility(compatibility) {
 			continue
 		}
 		waiters := conn.waiters.Load()
 		lastUsed := conn.lastUsedAt()
+		rank := conn.fullPowerRank(now)
 		if best == nil ||
-			waiters < bestWaiters ||
-			(waiters == bestWaiters && lastUsed.Before(bestLastUsed)) {
+			rank < bestRank ||
+			(rank == bestRank && waiters < bestWaiters) ||
+			(rank == bestRank && waiters == bestWaiters && lastUsed.Before(bestLastUsed)) {
 			best = conn
 			bestWaiters = waiters
 			bestLastUsed = lastUsed
+			bestRank = rank
 		}
 	}
 	return best
@@ -1780,6 +2129,8 @@ func (p *openAIWSConnPool) pickLeastBusyConnWithRoutingAffinityLocked(
 	var best *openAIWSConn
 	var bestWaiters int32
 	var bestLastUsed time.Time
+	var bestRank int
+	now := time.Now()
 	for _, conn := range ap.conns {
 		if conn == nil ||
 			!conn.matchesHandshakeCompatibility(compatibility) ||
@@ -1788,12 +2139,15 @@ func (p *openAIWSConnPool) pickLeastBusyConnWithRoutingAffinityLocked(
 		}
 		waiters := conn.waiters.Load()
 		lastUsed := conn.lastUsedAt()
+		rank := conn.fullPowerRank(now)
 		if best == nil ||
-			waiters < bestWaiters ||
-			(waiters == bestWaiters && lastUsed.Before(bestLastUsed)) {
+			rank < bestRank ||
+			(rank == bestRank && waiters < bestWaiters) ||
+			(rank == bestRank && waiters == bestWaiters && lastUsed.Before(bestLastUsed)) {
 			best = conn
 			bestWaiters = waiters
 			bestLastUsed = lastUsed
+			bestRank = rank
 		}
 	}
 	return best
@@ -2149,6 +2503,12 @@ func (p *openAIWSConnPool) dialConn(ctx context.Context, req openAIWSAcquireRequ
 	}
 	id := p.nextConnID(req.Account.ID)
 	pooledConn := newOpenAIWSConn(id, req.Account.ID, conn, handshakeHeaders)
+	if req.Account.ProxyID != nil {
+		pooledConn.proxyID.Store(*req.Account.ProxyID)
+	}
+	if !req.MarkFullPowerUntil.IsZero() {
+		pooledConn.fullPowerUntilNano.Store(req.MarkFullPowerUntil.UnixNano())
+	}
 	accountID := req.Account.ID
 	evict := func() { p.evictConn(accountID, id) }
 	pooledConn.onPeerClosed.Store(&evict)

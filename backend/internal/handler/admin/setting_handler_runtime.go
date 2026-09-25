@@ -10,6 +10,43 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// GetProxyDialSettings 获取代理拨号配置（代理跳 TLS 证书校验豁免开关）
+// GET /api/v1/admin/settings/proxy-dial
+func (h *SettingHandler) GetProxyDialSettings(c *gin.Context) {
+	settings, err := h.settingService.GetProxyDialSettings(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, settings)
+}
+
+// UpdateProxyDialSettingsRequest 更新代理拨号配置请求
+type UpdateProxyDialSettingsRequest struct {
+	InsecureSkipVerify bool `json:"insecure_skip_verify"`
+}
+
+// UpdateProxyDialSettings 更新代理拨号配置
+// PUT /api/v1/admin/settings/proxy-dial
+func (h *SettingHandler) UpdateProxyDialSettings(c *gin.Context) {
+	var req UpdateProxyDialSettingsRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	settings := &service.ProxyDialSettings{InsecureSkipVerify: req.InsecureSkipVerify}
+	if err := h.settingService.SetProxyDialSettings(c.Request.Context(), settings); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+	updated, err := h.settingService.GetProxyDialSettings(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, updated)
+}
+
 // GetAdminAPIKey 获取管理员 API Key 状态
 // GET /api/v1/admin/settings/admin-api-key
 func (h *SettingHandler) GetAdminAPIKey(c *gin.Context) {

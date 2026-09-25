@@ -67,6 +67,8 @@ func RegisterAdminRoutes(
 		// 代理管理
 		registerProxyRoutes(admin, h, stepUpAuth)
 		registerWindowProbeRoutes(admin, h)
+		registerWindowHunterRoutes(admin, h)
+		registerWindowSessionPoolRoutes(admin, h)
 
 		// 卡密管理
 		registerRedeemCodeRoutes(admin, h)
@@ -546,6 +548,29 @@ func registerWindowProbeRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	}
 }
 
+// registerWindowHunterRoutes 窗口猎手 P1：狩猎编排。
+func registerWindowHunterRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	windowHunter := admin.Group("/window-hunter")
+	{
+		windowHunter.GET("/status", h.Admin.WindowHunter.Status)
+		windowHunter.POST("/run", h.Admin.WindowHunter.Run)
+		windowHunter.GET("/settings", h.Admin.WindowHunter.GetSettings)
+		windowHunter.PUT("/settings", h.Admin.WindowHunter.UpdateSettings)
+	}
+}
+
+// registerWindowSessionPoolRoutes 窗口猎手 P2：满血会话池。
+func registerWindowSessionPoolRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	windowSessionPool := admin.Group("/window-session-pool")
+	{
+		windowSessionPool.GET("", h.Admin.WindowSessionPool.Snapshot)
+		windowSessionPool.POST("/prewarm", h.Admin.WindowSessionPool.Prewarm)
+		windowSessionPool.POST("/sample", h.Admin.WindowSessionPool.Sample)
+		windowSessionPool.GET("/settings", h.Admin.WindowSessionPool.GetSettings)
+		windowSessionPool.PUT("/settings", h.Admin.WindowSessionPool.UpdateSettings)
+	}
+}
+
 func registerRedeemCodeRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	codes := admin.Group("/redeem-codes")
 	{
@@ -590,6 +615,9 @@ func registerSettingsRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		adminSettings.GET("/admin-api-key", h.Admin.Setting.GetAdminAPIKey)
 		adminSettings.POST("/admin-api-key/regenerate", h.Admin.Setting.RegenerateAdminAPIKey)
 		adminSettings.DELETE("/admin-api-key", h.Admin.Setting.DeleteAdminAPIKey)
+		// 代理拨号配置（代理跳 TLS 证书校验豁免开关）
+		adminSettings.GET("/proxy-dial", h.Admin.Setting.GetProxyDialSettings)
+		adminSettings.PUT("/proxy-dial", h.Admin.Setting.UpdateProxyDialSettings)
 		// 529过载冷却配置
 		adminSettings.GET("/overload-cooldown", h.Admin.Setting.GetOverloadCooldownSettings)
 		adminSettings.PUT("/overload-cooldown", h.Admin.Setting.UpdateOverloadCooldownSettings)

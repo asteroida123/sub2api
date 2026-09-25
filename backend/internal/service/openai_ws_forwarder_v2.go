@@ -202,6 +202,12 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 	acquireCtx, acquireCancel := context.WithTimeout(ctx, s.openAIWSAcquireTimeout())
 	defer acquireCancel()
 
+	// 窗口猎手 P2：门控模型在"无满血即拒绝"策略开启时只接受满血会话
+	requireFullPower := false
+	if s.windowSessionPool != nil {
+		requireFullPower = s.windowSessionPool.AcquirePolicyForModel(mappedModel)
+	}
+
 	lease, err := s.getOpenAIWSConnPool().Acquire(acquireCtx, openAIWSAcquireRequest{
 		Account: account,
 		WSURL:   wsURL,
@@ -209,8 +215,9 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 		HeadersFactory: func(factoryCtx context.Context, headers http.Header) (http.Header, error) {
 			return s.refreshOpenAIAgentIdentityHeaders(factoryCtx, account, headers)
 		},
-		PreferredConnID: preferredConnID,
-		ForceNewConn:    forceNewConn,
+		PreferredConnID:  preferredConnID,
+		ForceNewConn:     forceNewConn,
+		RequireFullPower: requireFullPower,
 		ProxyURL: func() string {
 			if account.ProxyID != nil && account.Proxy != nil {
 				return account.Proxy.URL()
@@ -219,6 +226,14 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 		}(),
 	})
 	if err != nil {
+		if requireFullPower && errors.Is(err, errOpenAIWSFullPowerUnavailable) {
+			logOpenAIWSModeInfo(
+				"full_power_unavailable account_id=%d conn_id=- model=%s policy=reject_gated_when_no_full_power",
+				account.ID,
+				truncateOpenAIWSLogValue(mappedModel, openAIWSLogValueMaxLen),
+			)
+			return nil, &openAIWSFullPowerUnavailableError{Model: mappedModel}
+		}
 		var agentDialErr *openAIWSDialError
 		if s.isAgentIdentityAccount(ctx, account) && errors.As(err, &agentDialErr) && isAgentIdentityTaskInvalidWSDialError(agentDialErr) && agentTaskRecoveryTried != nil && !*agentTaskRecoveryTried {
 			*agentTaskRecoveryTried = true

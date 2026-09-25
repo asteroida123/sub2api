@@ -4,6 +4,7 @@
 //   - HTTP/HTTPS: 通过 Transport.Proxy 设置
 //   - SOCKS5: 通过 Transport.DialContext 设置（客户端本地解析 DNS）
 //   - SOCKS5H: 通过 Transport.DialContext 设置（代理端远程解析 DNS，推荐）
+//   - SS（Shadowsocks）: 通过 Transport.DialContext 设置（username=加密方法, password=密码）
 //
 // 注意：proxyurl.Parse() 会自动将 socks5:// 升级为 socks5h://，
 // 确保 DNS 也由代理端解析，防止 DNS 泄漏。
@@ -19,6 +20,8 @@ import (
 	"time"
 
 	"golang.org/x/net/proxy"
+
+	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 )
 
 const (
@@ -77,6 +80,15 @@ func ConfigureTransportProxy(transport *http.Transport, proxyURL *url.URL) error
 			transport.DialContext = func(_ context.Context, network, addr string) (net.Conn, error) {
 				return dialer.Dial(network, addr)
 			}
+		}
+		return nil
+
+	case "ss":
+		// 原生 Shadowsocks（窗口猎手 P3）：整条 TCP 走 ss 隧道，TLS 由调用方
+		// （Transport 自身或 tlsfingerprint.SSProxyDialer）在其上完成。
+		transport.Proxy = nil
+		transport.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
+			return tlsfingerprint.DialSSContext(ctx, proxyURL, addr)
 		}
 		return nil
 
