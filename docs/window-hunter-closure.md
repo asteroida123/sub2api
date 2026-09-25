@@ -72,7 +72,29 @@
 6. **`chatgpt.com` 根路径返回 403 + `cf-mitigated: challenge`**（Cloudflare 挑战）。
 
 **结论**：账号未被封、凭据未失效，**不需要刷新凭证**（手动刷新反而会因轮转机制作废
-sub2api 存的那份 refresh_token——项目红线 #4）。等待上游/CF 自行恢复。
+sub2api 存的那份 refresh_token——项目红线 #4）。
+
+### 事后确认（2026-09-26 07:41）
+
+**官方确认本次为 Codex backend 全局故障**，事件跟踪：
+<https://status.openai.com/incidents/01M3DCNWMW57HYK8FJ5FBFPA39>
+（"Issues with Codex"，Full outage，影响 Codex Web / Codex API / CLI / VS Code 扩展；
+07:34 官方更新 "root cause identified, mitigation underway"）。
+
+**与本文第 3 节判定一致**：账号侧无故障、换 IP 无效、错误是上游伪造。
+**上游于 07:41:57 恢复**（`response.created` 正常返回），总故障时长约 50 分钟。
+恢复后已清除 401 残留的运行时状态（`status=error` / `temp_unschedulable_*` / `error_message`），
+两个账号回到 `active` + 直连，指纹探针与真实业务流量均验证正常。
+
+**端点级判定的最终确认证据**（同一 token、同一域名、同一时刻）：
+| 端点 | 结果 |
+|---|---|
+| `GET /backend-api/codex/models?client_version=...` | **200**（正常返回模型列表） |
+| `api.openai.com/v1/me` | **200**（正常返回账号信息） |
+| `POST /backend-api/codex/responses` | **401**（伪造的 `Incorrect API key ... fvMA`） |
+
+同一 token 在 `/codex/models` 被接受、在 `/codex/responses` 被拒——故障在端点级而非账号级，
+这是判定该次事故性质的**决定性证据**。
 
 **副产品结论**：该端点对同一账号的响应在数小时内从"正常工作"变为"统一拒绝"，
 且未伴随任何本系统的异常请求量（2474 在故障前 12h 共 585 请求，属正常实验量），
