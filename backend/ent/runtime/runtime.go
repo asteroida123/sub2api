@@ -7,6 +7,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/ent/account"
 	"github.com/Wei-Shaw/sub2api/ent/accountgroup"
+	"github.com/Wei-Shaw/sub2api/ent/accountnodehealth"
 	"github.com/Wei-Shaw/sub2api/ent/announcement"
 	"github.com/Wei-Shaw/sub2api/ent/announcementread"
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
@@ -266,6 +267,45 @@ func init() {
 	accountgroupDescCreatedAt := accountgroupFields[3].Descriptor()
 	// accountgroup.DefaultCreatedAt holds the default value on creation for the created_at field.
 	accountgroup.DefaultCreatedAt = accountgroupDescCreatedAt.Default.(func() time.Time)
+	accountnodehealthMixin := schema.AccountNodeHealth{}.Mixin()
+	accountnodehealthMixinFields0 := accountnodehealthMixin[0].Fields()
+	_ = accountnodehealthMixinFields0
+	accountnodehealthFields := schema.AccountNodeHealth{}.Fields()
+	_ = accountnodehealthFields
+	// accountnodehealthDescCreatedAt is the schema descriptor for created_at field.
+	accountnodehealthDescCreatedAt := accountnodehealthMixinFields0[0].Descriptor()
+	// accountnodehealth.DefaultCreatedAt holds the default value on creation for the created_at field.
+	accountnodehealth.DefaultCreatedAt = accountnodehealthDescCreatedAt.Default.(func() time.Time)
+	// accountnodehealthDescUpdatedAt is the schema descriptor for updated_at field.
+	accountnodehealthDescUpdatedAt := accountnodehealthMixinFields0[1].Descriptor()
+	// accountnodehealth.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	accountnodehealth.DefaultUpdatedAt = accountnodehealthDescUpdatedAt.Default.(func() time.Time)
+	// accountnodehealth.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	accountnodehealth.UpdateDefaultUpdatedAt = accountnodehealthDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// accountnodehealthDescProxyID is the schema descriptor for proxy_id field.
+	accountnodehealthDescProxyID := accountnodehealthFields[1].Descriptor()
+	// accountnodehealth.DefaultProxyID holds the default value on creation for the proxy_id field.
+	accountnodehealth.DefaultProxyID = accountnodehealthDescProxyID.Default.(int64)
+	// accountnodehealthDescRegion is the schema descriptor for region field.
+	accountnodehealthDescRegion := accountnodehealthFields[2].Descriptor()
+	// accountnodehealth.DefaultRegion holds the default value on creation for the region field.
+	accountnodehealth.DefaultRegion = accountnodehealthDescRegion.Default.(string)
+	// accountnodehealth.RegionValidator is a validator for the "region" field. It is called by the builders before save.
+	accountnodehealth.RegionValidator = accountnodehealthDescRegion.Validators[0].(func(string) error)
+	// accountnodehealthDescState is the schema descriptor for state field.
+	accountnodehealthDescState := accountnodehealthFields[3].Descriptor()
+	// accountnodehealth.DefaultState holds the default value on creation for the state field.
+	accountnodehealth.DefaultState = accountnodehealthDescState.Default.(string)
+	// accountnodehealth.StateValidator is a validator for the "state" field. It is called by the builders before save.
+	accountnodehealth.StateValidator = accountnodehealthDescState.Validators[0].(func(string) error)
+	// accountnodehealthDescProbeCount is the schema descriptor for probe_count field.
+	accountnodehealthDescProbeCount := accountnodehealthFields[7].Descriptor()
+	// accountnodehealth.DefaultProbeCount holds the default value on creation for the probe_count field.
+	accountnodehealth.DefaultProbeCount = accountnodehealthDescProbeCount.Default.(int64)
+	// accountnodehealthDescLastProbeAnswer is the schema descriptor for last_probe_answer field.
+	accountnodehealthDescLastProbeAnswer := accountnodehealthFields[9].Descriptor()
+	// accountnodehealth.DefaultLastProbeAnswer holds the default value on creation for the last_probe_answer field.
+	accountnodehealth.DefaultLastProbeAnswer = accountnodehealthDescLastProbeAnswer.Default.(string)
 	announcementFields := schema.Announcement{}.Fields()
 	_ = announcementFields
 	// announcementDescTitle is the schema descriptor for title field.
