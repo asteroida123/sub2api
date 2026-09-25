@@ -58,6 +58,7 @@
 - 方案: 池条目扩展 `{conn_id, account_id, proxy_id, established_at, full_power_until(≈established+1h), last_sample_answer, degraded_flag}`
 - 采样: 每会话每 N 分钟注入一发指纹 turn；劣化 → 立即退役 + 回写 G1 状态机
 - 调度: 业务请求 Acquire 时优先 full_power 条目；无可用 → 走降智常规路径（或按配置拒绝）
+- **验收实验（存在意义所在）**: 窗口内建 ≥3 条独立上游 WS 入池 → 等窗口关闭（同出口新请求已降智为证）→ 逐条取用发指纹：池中连接仍满血 = "满血时多建、后面用"成立；降智 = 证伪，只保留 1h 强制寿命实现
 - 落点: `openai_ws_forwarder_v2.go` 池条目扩展 + `service/window_session_pool.go`（新）
 
 ### G4 窗口猎手（轮换编排器）【核心】
