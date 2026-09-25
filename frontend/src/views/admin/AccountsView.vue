@@ -287,8 +287,16 @@
             <AccountCapacityCell :account="row" />
           </template>
           <template #cell-status="{ row }">
-            <div class="flex items-center gap-1.5">
-              <AccountStatusIndicator :account="row" @show-temp-unsched="handleShowTempUnsched" />
+            <div class="flex flex-col items-start gap-1">
+              <div class="flex items-center gap-1.5">
+                <AccountStatusIndicator :account="row" @show-temp-unsched="handleShowTempUnsched" />
+              </div>
+              <WindowProbeBadge
+                :health="windowProbeHealthByAccountId[row.id] ?? null"
+                :probing="windowProbingAccountId === row.id"
+                :generated-at-ms="windowProbeHealthFetchedAt"
+                @probe="handleWindowProbe(row)"
+              />
             </div>
           </template>
           <template #cell-schedulable="{ row }">
@@ -492,6 +500,7 @@ import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
 import { adminAPI } from '@/api/admin'
+import type { WindowProbeHealth } from '@/api/admin'
 import { useTableLoader } from '@/composables/useTableLoader'
 import { useSwipeSelect, type SwipeSelectVirtualContext } from '@/composables/useSwipeSelect'
 import { useTableSelection } from '@/composables/useTableSelection'
@@ -515,6 +524,7 @@ import AccountStatsModal from '@/components/admin/account/AccountStatsModal.vue'
 import ScheduledTestsPanel from '@/components/admin/account/ScheduledTestsPanel.vue'
 import type { SelectOption } from '@/components/common/Select.vue'
 import AccountStatusIndicator from '@/components/account/AccountStatusIndicator.vue'
+import WindowProbeBadge from '@/components/admin/account/WindowProbeBadge.vue'
 import AccountUsageCell from '@/components/account/AccountUsageCell.vue'
 import AccountTodayStatsCell from '@/components/account/AccountTodayStatsCell.vue'
 import AccountGroupsCell from '@/components/account/AccountGroupsCell.vue'
@@ -540,6 +550,45 @@ const authStore = useAuthStore()
 
 const proxies = ref<AccountProxy[]>([])
 const groups = ref<AdminGroup[]>([])
+
+// 窗口猎手 P0：账号×节点降智健康徽标
+const windowProbeHealthByAccountId = ref<Record<number, WindowProbeHealth>>({})
+const windowProbeHealthFetchedAt = ref<number>(Date.now())
+const windowProbingAccountId = ref<number | null>(null)
+
+const refreshWindowProbeHealth = async () => {
+  try {
+    const result = await adminAPI.windowProbe.getWindowProbeHealth()
+    const next: Record<number, WindowProbeHealth> = {}
+    for (const item of result.items) next[item.account_id] = item
+    windowProbeHealthByAccountId.value = next
+    windowProbeHealthFetchedAt.value = Date.now()
+  } catch (error) {
+    console.error('Failed to load window probe health:', error)
+  }
+}
+
+// 探测即污染：点击前需用户知晓一次探测会把该出口的窗口时钟归零
+const handleWindowProbe = async (account: Pick<AccountListItem, 'id'>) => {
+  if (windowProbingAccountId.value !== null) return
+  windowProbingAccountId.value = account.id
+  try {
+    const outcome = await adminAPI.windowProbe.probeAccountWindow(account.id, { force: true })
+    if (outcome.result === 'full_power') {
+      appStore.showSuccess(t('admin.accounts.windowProbe.probeResultFullPower', { answer: outcome.answer }), 6000)
+    } else if (outcome.result === 'degraded') {
+      appStore.showWarning(t('admin.accounts.windowProbe.probeResultDegraded', { answer: outcome.answer }), 6000)
+    } else {
+      appStore.showError(t('admin.accounts.windowProbe.probeResultError', { message: outcome.message || outcome.answer }), 6000)
+    }
+  } catch (error: any) {
+    const message = typeof error?.message === 'string' ? error.message : ''
+    appStore.showError(t('admin.accounts.windowProbe.probeResultError', { message }), 6000)
+  } finally {
+    windowProbingAccountId.value = null
+    await refreshWindowProbeHealth()
+  }
+}
 const groupsByID = computed(() => new Map(groups.value.map(group => [group.id, group])))
 const accountGroupsForRow = (account: Pick<AccountListItem, 'group_ids'>): AdminGroup[] => {
   const groupIDs = account.group_ids ?? []
@@ -2534,6 +2583,7 @@ onMounted(async () => {
 
   load()
   loadUpstreamBillingProbeGlobalState()
+  refreshWindowProbeHealth()
   const [proxiesResult, groupsResult] = await Promise.allSettled([
     adminAPI.proxies.getAll(),
     adminAPI.groups.getAll()

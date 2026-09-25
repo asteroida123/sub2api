@@ -282,6 +282,27 @@ func ProvideAccountTestService(
 	return service
 }
 
+// ProvideWindowProbeService 构造窗口猎手指纹探针服务（P0）。
+func ProvideWindowProbeService(
+	accountRepo AccountRepository,
+	proxyRepo ProxyRepository,
+	healthRepo WindowProbeRepository,
+	httpUpstream HTTPUpstream,
+	tlsFPProfileService *TLSFingerprintProfileService,
+	settingService *SettingService,
+	proxyLatencyCache ProxyLatencyCache,
+) *WindowProbeService {
+	return NewWindowProbeService(
+		accountRepo,
+		proxyRepo,
+		healthRepo,
+		httpUpstream,
+		tlsFPProfileService,
+		settingService,
+		proxyLatencyCache,
+	)
+}
+
 func ProvideGrokQuotaService(
 	accountRepo AccountRepository,
 	proxyRepo ProxyRepository,
@@ -905,6 +926,7 @@ var ProviderSet = wire.NewSet(
 	ProvideRateLimitService,
 	ProvideAccountUsageService,
 	ProvideAccountTestService,
+	ProvideWindowProbeService,
 	ProvideUpstreamBillingProbeService,
 	ProvideOllamaCloudUsageService,
 	ProvideOpenCodeGoUsageService,

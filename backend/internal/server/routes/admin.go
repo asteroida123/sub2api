@@ -66,6 +66,7 @@ func RegisterAdminRoutes(
 
 		// 代理管理
 		registerProxyRoutes(admin, h, stepUpAuth)
+		registerWindowProbeRoutes(admin, h)
 
 		// 卡密管理
 		registerRedeemCodeRoutes(admin, h)
@@ -388,6 +389,8 @@ func registerAccountRoutes(admin *gin.RouterGroup, h *handler.Handlers, stepUpAu
 		accounts.POST("/:id/opencode-go-usage/refresh", h.Admin.Account.RefreshOpenCodeGoUsage)
 		accounts.DELETE("/:id", h.Admin.Account.Delete)
 		accounts.POST("/:id/test", h.Admin.Account.Test)
+		// 窗口猎手 P0：手动指纹探测（探测即污染，三态结论落库）
+		accounts.POST("/:id/window-probe", h.Admin.WindowProbe.Probe)
 		accounts.POST("/:id/recover-state", h.Admin.Account.RecoverState)
 		accounts.POST("/:id/refresh", h.Admin.Account.Refresh)
 		accounts.POST("/:id/apply-oauth-credentials", h.Admin.Account.ApplyOAuthCredentials)
@@ -530,6 +533,16 @@ func registerProxyRoutes(admin *gin.RouterGroup, h *handler.Handlers, stepUpAuth
 		proxies.GET("/:id/accounts", h.Admin.Proxy.GetProxyAccounts)
 		proxies.POST("/batch-delete", h.Admin.Proxy.BatchDelete)
 		proxies.POST("/batch", h.Admin.Proxy.BatchCreate)
+	}
+}
+
+// registerWindowProbeRoutes 窗口猎手 P0：健康徽标与探针配置。
+func registerWindowProbeRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	windowProbe := admin.Group("/window-probe")
+	{
+		windowProbe.GET("/health", h.Admin.WindowProbe.ListHealth)
+		windowProbe.GET("/settings", h.Admin.WindowProbe.GetSettings)
+		windowProbe.PUT("/settings", h.Admin.WindowProbe.UpdateSettings)
 	}
 }
 

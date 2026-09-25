@@ -14,6 +14,7 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"github.com/Wei-Shaw/sub2api/ent/account"
 	"github.com/Wei-Shaw/sub2api/ent/accountgroup"
+	"github.com/Wei-Shaw/sub2api/ent/accountnodehealth"
 	"github.com/Wei-Shaw/sub2api/ent/announcement"
 	"github.com/Wei-Shaw/sub2api/ent/announcementread"
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
@@ -67,6 +68,7 @@ const (
 	TypeAPIKey                        = "APIKey"
 	TypeAccount                       = "Account"
 	TypeAccountGroup                  = "AccountGroup"
+	TypeAccountNodeHealth             = "AccountNodeHealth"
 	TypeAnnouncement                  = "Announcement"
 	TypeAnnouncementRead              = "AnnouncementRead"
 	TypeAuthIdentity                  = "AuthIdentity"
@@ -5568,6 +5570,1107 @@ func (m *AccountGroupMutation) ResetEdge(name string) error {
 		return nil
 	}
 	return fmt.Errorf("unknown AccountGroup edge %s", name)
+}
+
+// AccountNodeHealthMutation represents an operation that mutates the AccountNodeHealth nodes in the graph.
+type AccountNodeHealthMutation struct {
+	config
+	op                Op
+	typ               string
+	id                *int64
+	created_at        *time.Time
+	updated_at        *time.Time
+	account_id        *int64
+	addaccount_id     *int64
+	proxy_id          *int64
+	addproxy_id       *int64
+	region            *string
+	state             *string
+	window_opened_at  *time.Time
+	degraded_at       *time.Time
+	cooldown_until    *time.Time
+	probe_count       *int64
+	addprobe_count    *int64
+	last_probe_at     *time.Time
+	last_probe_answer *string
+	clearedFields     map[string]struct{}
+	done              bool
+	oldValue          func(context.Context) (*AccountNodeHealth, error)
+	predicates        []predicate.AccountNodeHealth
+}
+
+var _ ent.Mutation = (*AccountNodeHealthMutation)(nil)
+
+// accountnodehealthOption allows management of the mutation configuration using functional options.
+type accountnodehealthOption func(*AccountNodeHealthMutation)
+
+// newAccountNodeHealthMutation creates new mutation for the AccountNodeHealth entity.
+func newAccountNodeHealthMutation(c config, op Op, opts ...accountnodehealthOption) *AccountNodeHealthMutation {
+	m := &AccountNodeHealthMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeAccountNodeHealth,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withAccountNodeHealthID sets the ID field of the mutation.
+func withAccountNodeHealthID(id int64) accountnodehealthOption {
+	return func(m *AccountNodeHealthMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *AccountNodeHealth
+		)
+		m.oldValue = func(ctx context.Context) (*AccountNodeHealth, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().AccountNodeHealth.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withAccountNodeHealth sets the old AccountNodeHealth of the mutation.
+func withAccountNodeHealth(node *AccountNodeHealth) accountnodehealthOption {
+	return func(m *AccountNodeHealthMutation) {
+		m.oldValue = func(context.Context) (*AccountNodeHealth, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m AccountNodeHealthMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m AccountNodeHealthMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *AccountNodeHealthMutation) ID() (id int64, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *AccountNodeHealthMutation) IDs(ctx context.Context) ([]int64, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []int64{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().AccountNodeHealth.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *AccountNodeHealthMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *AccountNodeHealthMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the AccountNodeHealth entity.
+// If the AccountNodeHealth object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountNodeHealthMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *AccountNodeHealthMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *AccountNodeHealthMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *AccountNodeHealthMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the AccountNodeHealth entity.
+// If the AccountNodeHealth object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountNodeHealthMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *AccountNodeHealthMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// SetAccountID sets the "account_id" field.
+func (m *AccountNodeHealthMutation) SetAccountID(i int64) {
+	m.account_id = &i
+	m.addaccount_id = nil
+}
+
+// AccountID returns the value of the "account_id" field in the mutation.
+func (m *AccountNodeHealthMutation) AccountID() (r int64, exists bool) {
+	v := m.account_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAccountID returns the old "account_id" field's value of the AccountNodeHealth entity.
+// If the AccountNodeHealth object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountNodeHealthMutation) OldAccountID(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAccountID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAccountID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAccountID: %w", err)
+	}
+	return oldValue.AccountID, nil
+}
+
+// AddAccountID adds i to the "account_id" field.
+func (m *AccountNodeHealthMutation) AddAccountID(i int64) {
+	if m.addaccount_id != nil {
+		*m.addaccount_id += i
+	} else {
+		m.addaccount_id = &i
+	}
+}
+
+// AddedAccountID returns the value that was added to the "account_id" field in this mutation.
+func (m *AccountNodeHealthMutation) AddedAccountID() (r int64, exists bool) {
+	v := m.addaccount_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetAccountID resets all changes to the "account_id" field.
+func (m *AccountNodeHealthMutation) ResetAccountID() {
+	m.account_id = nil
+	m.addaccount_id = nil
+}
+
+// SetProxyID sets the "proxy_id" field.
+func (m *AccountNodeHealthMutation) SetProxyID(i int64) {
+	m.proxy_id = &i
+	m.addproxy_id = nil
+}
+
+// ProxyID returns the value of the "proxy_id" field in the mutation.
+func (m *AccountNodeHealthMutation) ProxyID() (r int64, exists bool) {
+	v := m.proxy_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldProxyID returns the old "proxy_id" field's value of the AccountNodeHealth entity.
+// If the AccountNodeHealth object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountNodeHealthMutation) OldProxyID(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldProxyID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldProxyID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldProxyID: %w", err)
+	}
+	return oldValue.ProxyID, nil
+}
+
+// AddProxyID adds i to the "proxy_id" field.
+func (m *AccountNodeHealthMutation) AddProxyID(i int64) {
+	if m.addproxy_id != nil {
+		*m.addproxy_id += i
+	} else {
+		m.addproxy_id = &i
+	}
+}
+
+// AddedProxyID returns the value that was added to the "proxy_id" field in this mutation.
+func (m *AccountNodeHealthMutation) AddedProxyID() (r int64, exists bool) {
+	v := m.addproxy_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetProxyID resets all changes to the "proxy_id" field.
+func (m *AccountNodeHealthMutation) ResetProxyID() {
+	m.proxy_id = nil
+	m.addproxy_id = nil
+}
+
+// SetRegion sets the "region" field.
+func (m *AccountNodeHealthMutation) SetRegion(s string) {
+	m.region = &s
+}
+
+// Region returns the value of the "region" field in the mutation.
+func (m *AccountNodeHealthMutation) Region() (r string, exists bool) {
+	v := m.region
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRegion returns the old "region" field's value of the AccountNodeHealth entity.
+// If the AccountNodeHealth object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountNodeHealthMutation) OldRegion(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRegion is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRegion requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRegion: %w", err)
+	}
+	return oldValue.Region, nil
+}
+
+// ResetRegion resets all changes to the "region" field.
+func (m *AccountNodeHealthMutation) ResetRegion() {
+	m.region = nil
+}
+
+// SetState sets the "state" field.
+func (m *AccountNodeHealthMutation) SetState(s string) {
+	m.state = &s
+}
+
+// State returns the value of the "state" field in the mutation.
+func (m *AccountNodeHealthMutation) State() (r string, exists bool) {
+	v := m.state
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldState returns the old "state" field's value of the AccountNodeHealth entity.
+// If the AccountNodeHealth object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountNodeHealthMutation) OldState(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldState is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldState requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldState: %w", err)
+	}
+	return oldValue.State, nil
+}
+
+// ResetState resets all changes to the "state" field.
+func (m *AccountNodeHealthMutation) ResetState() {
+	m.state = nil
+}
+
+// SetWindowOpenedAt sets the "window_opened_at" field.
+func (m *AccountNodeHealthMutation) SetWindowOpenedAt(t time.Time) {
+	m.window_opened_at = &t
+}
+
+// WindowOpenedAt returns the value of the "window_opened_at" field in the mutation.
+func (m *AccountNodeHealthMutation) WindowOpenedAt() (r time.Time, exists bool) {
+	v := m.window_opened_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldWindowOpenedAt returns the old "window_opened_at" field's value of the AccountNodeHealth entity.
+// If the AccountNodeHealth object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountNodeHealthMutation) OldWindowOpenedAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldWindowOpenedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldWindowOpenedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldWindowOpenedAt: %w", err)
+	}
+	return oldValue.WindowOpenedAt, nil
+}
+
+// ClearWindowOpenedAt clears the value of the "window_opened_at" field.
+func (m *AccountNodeHealthMutation) ClearWindowOpenedAt() {
+	m.window_opened_at = nil
+	m.clearedFields[accountnodehealth.FieldWindowOpenedAt] = struct{}{}
+}
+
+// WindowOpenedAtCleared returns if the "window_opened_at" field was cleared in this mutation.
+func (m *AccountNodeHealthMutation) WindowOpenedAtCleared() bool {
+	_, ok := m.clearedFields[accountnodehealth.FieldWindowOpenedAt]
+	return ok
+}
+
+// ResetWindowOpenedAt resets all changes to the "window_opened_at" field.
+func (m *AccountNodeHealthMutation) ResetWindowOpenedAt() {
+	m.window_opened_at = nil
+	delete(m.clearedFields, accountnodehealth.FieldWindowOpenedAt)
+}
+
+// SetDegradedAt sets the "degraded_at" field.
+func (m *AccountNodeHealthMutation) SetDegradedAt(t time.Time) {
+	m.degraded_at = &t
+}
+
+// DegradedAt returns the value of the "degraded_at" field in the mutation.
+func (m *AccountNodeHealthMutation) DegradedAt() (r time.Time, exists bool) {
+	v := m.degraded_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDegradedAt returns the old "degraded_at" field's value of the AccountNodeHealth entity.
+// If the AccountNodeHealth object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountNodeHealthMutation) OldDegradedAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDegradedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDegradedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDegradedAt: %w", err)
+	}
+	return oldValue.DegradedAt, nil
+}
+
+// ClearDegradedAt clears the value of the "degraded_at" field.
+func (m *AccountNodeHealthMutation) ClearDegradedAt() {
+	m.degraded_at = nil
+	m.clearedFields[accountnodehealth.FieldDegradedAt] = struct{}{}
+}
+
+// DegradedAtCleared returns if the "degraded_at" field was cleared in this mutation.
+func (m *AccountNodeHealthMutation) DegradedAtCleared() bool {
+	_, ok := m.clearedFields[accountnodehealth.FieldDegradedAt]
+	return ok
+}
+
+// ResetDegradedAt resets all changes to the "degraded_at" field.
+func (m *AccountNodeHealthMutation) ResetDegradedAt() {
+	m.degraded_at = nil
+	delete(m.clearedFields, accountnodehealth.FieldDegradedAt)
+}
+
+// SetCooldownUntil sets the "cooldown_until" field.
+func (m *AccountNodeHealthMutation) SetCooldownUntil(t time.Time) {
+	m.cooldown_until = &t
+}
+
+// CooldownUntil returns the value of the "cooldown_until" field in the mutation.
+func (m *AccountNodeHealthMutation) CooldownUntil() (r time.Time, exists bool) {
+	v := m.cooldown_until
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCooldownUntil returns the old "cooldown_until" field's value of the AccountNodeHealth entity.
+// If the AccountNodeHealth object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountNodeHealthMutation) OldCooldownUntil(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCooldownUntil is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCooldownUntil requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCooldownUntil: %w", err)
+	}
+	return oldValue.CooldownUntil, nil
+}
+
+// ClearCooldownUntil clears the value of the "cooldown_until" field.
+func (m *AccountNodeHealthMutation) ClearCooldownUntil() {
+	m.cooldown_until = nil
+	m.clearedFields[accountnodehealth.FieldCooldownUntil] = struct{}{}
+}
+
+// CooldownUntilCleared returns if the "cooldown_until" field was cleared in this mutation.
+func (m *AccountNodeHealthMutation) CooldownUntilCleared() bool {
+	_, ok := m.clearedFields[accountnodehealth.FieldCooldownUntil]
+	return ok
+}
+
+// ResetCooldownUntil resets all changes to the "cooldown_until" field.
+func (m *AccountNodeHealthMutation) ResetCooldownUntil() {
+	m.cooldown_until = nil
+	delete(m.clearedFields, accountnodehealth.FieldCooldownUntil)
+}
+
+// SetProbeCount sets the "probe_count" field.
+func (m *AccountNodeHealthMutation) SetProbeCount(i int64) {
+	m.probe_count = &i
+	m.addprobe_count = nil
+}
+
+// ProbeCount returns the value of the "probe_count" field in the mutation.
+func (m *AccountNodeHealthMutation) ProbeCount() (r int64, exists bool) {
+	v := m.probe_count
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldProbeCount returns the old "probe_count" field's value of the AccountNodeHealth entity.
+// If the AccountNodeHealth object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountNodeHealthMutation) OldProbeCount(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldProbeCount is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldProbeCount requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldProbeCount: %w", err)
+	}
+	return oldValue.ProbeCount, nil
+}
+
+// AddProbeCount adds i to the "probe_count" field.
+func (m *AccountNodeHealthMutation) AddProbeCount(i int64) {
+	if m.addprobe_count != nil {
+		*m.addprobe_count += i
+	} else {
+		m.addprobe_count = &i
+	}
+}
+
+// AddedProbeCount returns the value that was added to the "probe_count" field in this mutation.
+func (m *AccountNodeHealthMutation) AddedProbeCount() (r int64, exists bool) {
+	v := m.addprobe_count
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetProbeCount resets all changes to the "probe_count" field.
+func (m *AccountNodeHealthMutation) ResetProbeCount() {
+	m.probe_count = nil
+	m.addprobe_count = nil
+}
+
+// SetLastProbeAt sets the "last_probe_at" field.
+func (m *AccountNodeHealthMutation) SetLastProbeAt(t time.Time) {
+	m.last_probe_at = &t
+}
+
+// LastProbeAt returns the value of the "last_probe_at" field in the mutation.
+func (m *AccountNodeHealthMutation) LastProbeAt() (r time.Time, exists bool) {
+	v := m.last_probe_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLastProbeAt returns the old "last_probe_at" field's value of the AccountNodeHealth entity.
+// If the AccountNodeHealth object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountNodeHealthMutation) OldLastProbeAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLastProbeAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLastProbeAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLastProbeAt: %w", err)
+	}
+	return oldValue.LastProbeAt, nil
+}
+
+// ClearLastProbeAt clears the value of the "last_probe_at" field.
+func (m *AccountNodeHealthMutation) ClearLastProbeAt() {
+	m.last_probe_at = nil
+	m.clearedFields[accountnodehealth.FieldLastProbeAt] = struct{}{}
+}
+
+// LastProbeAtCleared returns if the "last_probe_at" field was cleared in this mutation.
+func (m *AccountNodeHealthMutation) LastProbeAtCleared() bool {
+	_, ok := m.clearedFields[accountnodehealth.FieldLastProbeAt]
+	return ok
+}
+
+// ResetLastProbeAt resets all changes to the "last_probe_at" field.
+func (m *AccountNodeHealthMutation) ResetLastProbeAt() {
+	m.last_probe_at = nil
+	delete(m.clearedFields, accountnodehealth.FieldLastProbeAt)
+}
+
+// SetLastProbeAnswer sets the "last_probe_answer" field.
+func (m *AccountNodeHealthMutation) SetLastProbeAnswer(s string) {
+	m.last_probe_answer = &s
+}
+
+// LastProbeAnswer returns the value of the "last_probe_answer" field in the mutation.
+func (m *AccountNodeHealthMutation) LastProbeAnswer() (r string, exists bool) {
+	v := m.last_probe_answer
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLastProbeAnswer returns the old "last_probe_answer" field's value of the AccountNodeHealth entity.
+// If the AccountNodeHealth object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountNodeHealthMutation) OldLastProbeAnswer(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLastProbeAnswer is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLastProbeAnswer requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLastProbeAnswer: %w", err)
+	}
+	return oldValue.LastProbeAnswer, nil
+}
+
+// ResetLastProbeAnswer resets all changes to the "last_probe_answer" field.
+func (m *AccountNodeHealthMutation) ResetLastProbeAnswer() {
+	m.last_probe_answer = nil
+}
+
+// Where appends a list predicates to the AccountNodeHealthMutation builder.
+func (m *AccountNodeHealthMutation) Where(ps ...predicate.AccountNodeHealth) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the AccountNodeHealthMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *AccountNodeHealthMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.AccountNodeHealth, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *AccountNodeHealthMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *AccountNodeHealthMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (AccountNodeHealth).
+func (m *AccountNodeHealthMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *AccountNodeHealthMutation) Fields() []string {
+	fields := make([]string, 0, 12)
+	if m.created_at != nil {
+		fields = append(fields, accountnodehealth.FieldCreatedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, accountnodehealth.FieldUpdatedAt)
+	}
+	if m.account_id != nil {
+		fields = append(fields, accountnodehealth.FieldAccountID)
+	}
+	if m.proxy_id != nil {
+		fields = append(fields, accountnodehealth.FieldProxyID)
+	}
+	if m.region != nil {
+		fields = append(fields, accountnodehealth.FieldRegion)
+	}
+	if m.state != nil {
+		fields = append(fields, accountnodehealth.FieldState)
+	}
+	if m.window_opened_at != nil {
+		fields = append(fields, accountnodehealth.FieldWindowOpenedAt)
+	}
+	if m.degraded_at != nil {
+		fields = append(fields, accountnodehealth.FieldDegradedAt)
+	}
+	if m.cooldown_until != nil {
+		fields = append(fields, accountnodehealth.FieldCooldownUntil)
+	}
+	if m.probe_count != nil {
+		fields = append(fields, accountnodehealth.FieldProbeCount)
+	}
+	if m.last_probe_at != nil {
+		fields = append(fields, accountnodehealth.FieldLastProbeAt)
+	}
+	if m.last_probe_answer != nil {
+		fields = append(fields, accountnodehealth.FieldLastProbeAnswer)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *AccountNodeHealthMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case accountnodehealth.FieldCreatedAt:
+		return m.CreatedAt()
+	case accountnodehealth.FieldUpdatedAt:
+		return m.UpdatedAt()
+	case accountnodehealth.FieldAccountID:
+		return m.AccountID()
+	case accountnodehealth.FieldProxyID:
+		return m.ProxyID()
+	case accountnodehealth.FieldRegion:
+		return m.Region()
+	case accountnodehealth.FieldState:
+		return m.State()
+	case accountnodehealth.FieldWindowOpenedAt:
+		return m.WindowOpenedAt()
+	case accountnodehealth.FieldDegradedAt:
+		return m.DegradedAt()
+	case accountnodehealth.FieldCooldownUntil:
+		return m.CooldownUntil()
+	case accountnodehealth.FieldProbeCount:
+		return m.ProbeCount()
+	case accountnodehealth.FieldLastProbeAt:
+		return m.LastProbeAt()
+	case accountnodehealth.FieldLastProbeAnswer:
+		return m.LastProbeAnswer()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *AccountNodeHealthMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case accountnodehealth.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case accountnodehealth.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	case accountnodehealth.FieldAccountID:
+		return m.OldAccountID(ctx)
+	case accountnodehealth.FieldProxyID:
+		return m.OldProxyID(ctx)
+	case accountnodehealth.FieldRegion:
+		return m.OldRegion(ctx)
+	case accountnodehealth.FieldState:
+		return m.OldState(ctx)
+	case accountnodehealth.FieldWindowOpenedAt:
+		return m.OldWindowOpenedAt(ctx)
+	case accountnodehealth.FieldDegradedAt:
+		return m.OldDegradedAt(ctx)
+	case accountnodehealth.FieldCooldownUntil:
+		return m.OldCooldownUntil(ctx)
+	case accountnodehealth.FieldProbeCount:
+		return m.OldProbeCount(ctx)
+	case accountnodehealth.FieldLastProbeAt:
+		return m.OldLastProbeAt(ctx)
+	case accountnodehealth.FieldLastProbeAnswer:
+		return m.OldLastProbeAnswer(ctx)
+	}
+	return nil, fmt.Errorf("unknown AccountNodeHealth field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *AccountNodeHealthMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case accountnodehealth.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case accountnodehealth.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	case accountnodehealth.FieldAccountID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAccountID(v)
+		return nil
+	case accountnodehealth.FieldProxyID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetProxyID(v)
+		return nil
+	case accountnodehealth.FieldRegion:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRegion(v)
+		return nil
+	case accountnodehealth.FieldState:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetState(v)
+		return nil
+	case accountnodehealth.FieldWindowOpenedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetWindowOpenedAt(v)
+		return nil
+	case accountnodehealth.FieldDegradedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDegradedAt(v)
+		return nil
+	case accountnodehealth.FieldCooldownUntil:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCooldownUntil(v)
+		return nil
+	case accountnodehealth.FieldProbeCount:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetProbeCount(v)
+		return nil
+	case accountnodehealth.FieldLastProbeAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLastProbeAt(v)
+		return nil
+	case accountnodehealth.FieldLastProbeAnswer:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLastProbeAnswer(v)
+		return nil
+	}
+	return fmt.Errorf("unknown AccountNodeHealth field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *AccountNodeHealthMutation) AddedFields() []string {
+	var fields []string
+	if m.addaccount_id != nil {
+		fields = append(fields, accountnodehealth.FieldAccountID)
+	}
+	if m.addproxy_id != nil {
+		fields = append(fields, accountnodehealth.FieldProxyID)
+	}
+	if m.addprobe_count != nil {
+		fields = append(fields, accountnodehealth.FieldProbeCount)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *AccountNodeHealthMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case accountnodehealth.FieldAccountID:
+		return m.AddedAccountID()
+	case accountnodehealth.FieldProxyID:
+		return m.AddedProxyID()
+	case accountnodehealth.FieldProbeCount:
+		return m.AddedProbeCount()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *AccountNodeHealthMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case accountnodehealth.FieldAccountID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddAccountID(v)
+		return nil
+	case accountnodehealth.FieldProxyID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddProxyID(v)
+		return nil
+	case accountnodehealth.FieldProbeCount:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddProbeCount(v)
+		return nil
+	}
+	return fmt.Errorf("unknown AccountNodeHealth numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *AccountNodeHealthMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(accountnodehealth.FieldWindowOpenedAt) {
+		fields = append(fields, accountnodehealth.FieldWindowOpenedAt)
+	}
+	if m.FieldCleared(accountnodehealth.FieldDegradedAt) {
+		fields = append(fields, accountnodehealth.FieldDegradedAt)
+	}
+	if m.FieldCleared(accountnodehealth.FieldCooldownUntil) {
+		fields = append(fields, accountnodehealth.FieldCooldownUntil)
+	}
+	if m.FieldCleared(accountnodehealth.FieldLastProbeAt) {
+		fields = append(fields, accountnodehealth.FieldLastProbeAt)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *AccountNodeHealthMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *AccountNodeHealthMutation) ClearField(name string) error {
+	switch name {
+	case accountnodehealth.FieldWindowOpenedAt:
+		m.ClearWindowOpenedAt()
+		return nil
+	case accountnodehealth.FieldDegradedAt:
+		m.ClearDegradedAt()
+		return nil
+	case accountnodehealth.FieldCooldownUntil:
+		m.ClearCooldownUntil()
+		return nil
+	case accountnodehealth.FieldLastProbeAt:
+		m.ClearLastProbeAt()
+		return nil
+	}
+	return fmt.Errorf("unknown AccountNodeHealth nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *AccountNodeHealthMutation) ResetField(name string) error {
+	switch name {
+	case accountnodehealth.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case accountnodehealth.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	case accountnodehealth.FieldAccountID:
+		m.ResetAccountID()
+		return nil
+	case accountnodehealth.FieldProxyID:
+		m.ResetProxyID()
+		return nil
+	case accountnodehealth.FieldRegion:
+		m.ResetRegion()
+		return nil
+	case accountnodehealth.FieldState:
+		m.ResetState()
+		return nil
+	case accountnodehealth.FieldWindowOpenedAt:
+		m.ResetWindowOpenedAt()
+		return nil
+	case accountnodehealth.FieldDegradedAt:
+		m.ResetDegradedAt()
+		return nil
+	case accountnodehealth.FieldCooldownUntil:
+		m.ResetCooldownUntil()
+		return nil
+	case accountnodehealth.FieldProbeCount:
+		m.ResetProbeCount()
+		return nil
+	case accountnodehealth.FieldLastProbeAt:
+		m.ResetLastProbeAt()
+		return nil
+	case accountnodehealth.FieldLastProbeAnswer:
+		m.ResetLastProbeAnswer()
+		return nil
+	}
+	return fmt.Errorf("unknown AccountNodeHealth field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *AccountNodeHealthMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *AccountNodeHealthMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *AccountNodeHealthMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *AccountNodeHealthMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *AccountNodeHealthMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *AccountNodeHealthMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *AccountNodeHealthMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown AccountNodeHealth unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *AccountNodeHealthMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown AccountNodeHealth edge %s", name)
 }
 
 // AnnouncementMutation represents an operation that mutates the Announcement nodes in the graph.

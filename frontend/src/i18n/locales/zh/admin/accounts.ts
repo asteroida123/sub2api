@@ -424,6 +424,19 @@ export default {
       accountSchedulingThresholdOverrideValue: '账号阈值百分比',
       accountSchedulingThresholdOverrideDisabledHint:
         '1-100，达到该用量百分比后临时不可调度；100 表示禁用当前账号自动停调。',
+      windowProbe: {
+        stateFullPower: '满血',
+        stateDegraded: '降智',
+        stateCooldown: '冷却中',
+        stateUnknown: '未探测',
+        probing: '探测中…',
+        probeNowHint: '点击立即指纹探测（注意：探测即污染，该出口的窗口时钟会归零）',
+        lastProbe: '上次探测 {time}（第 {count} 次）',
+        lastAnswer: '上次回答：{answer}',
+        probeResultFullPower: '🎯 满血窗口！回答：{answer}',
+        probeResultDegraded: '已降智。回答：{answer}',
+        probeResultError: '探测失败：{message}'
+      },
       status: {
         active: '正常',
         inactive: '停用',

@@ -259,6 +259,45 @@ var (
 			},
 		},
 	}
+	// AccountNodeHealthColumns holds the columns for the "account_node_health" table.
+	AccountNodeHealthColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "account_id", Type: field.TypeInt64},
+		{Name: "proxy_id", Type: field.TypeInt64, Default: 0},
+		{Name: "region", Type: field.TypeString, Size: 64, Default: ""},
+		{Name: "state", Type: field.TypeString, Size: 20, Default: "unknown"},
+		{Name: "window_opened_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "degraded_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "cooldown_until", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "probe_count", Type: field.TypeInt64, Default: 0},
+		{Name: "last_probe_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "last_probe_answer", Type: field.TypeString, Size: 2147483647, Default: ""},
+	}
+	// AccountNodeHealthTable holds the schema information for the "account_node_health" table.
+	AccountNodeHealthTable = &schema.Table{
+		Name:       "account_node_health",
+		Columns:    AccountNodeHealthColumns,
+		PrimaryKey: []*schema.Column{AccountNodeHealthColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "accountnodehealth_account_id_proxy_id",
+				Unique:  true,
+				Columns: []*schema.Column{AccountNodeHealthColumns[3], AccountNodeHealthColumns[4]},
+			},
+			{
+				Name:    "accountnodehealth_account_id",
+				Unique:  false,
+				Columns: []*schema.Column{AccountNodeHealthColumns[3]},
+			},
+			{
+				Name:    "accountnodehealth_state",
+				Unique:  false,
+				Columns: []*schema.Column{AccountNodeHealthColumns[6]},
+			},
+		},
+	}
 	// AnnouncementsColumns holds the columns for the "announcements" table.
 	AnnouncementsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt64, Increment: true},
@@ -2091,6 +2130,7 @@ var (
 		APIKeysTable,
 		AccountsTable,
 		AccountGroupsTable,
+		AccountNodeHealthTable,
 		AnnouncementsTable,
 		AnnouncementReadsTable,
 		AuthIdentitiesTable,
@@ -2145,6 +2185,9 @@ func init() {
 	AccountGroupsTable.ForeignKeys[1].RefTable = GroupsTable
 	AccountGroupsTable.Annotation = &entsql.Annotation{
 		Table: "account_groups",
+	}
+	AccountNodeHealthTable.Annotation = &entsql.Annotation{
+		Table: "account_node_health",
 	}
 	AnnouncementsTable.Annotation = &entsql.Annotation{
 		Table: "announcements",

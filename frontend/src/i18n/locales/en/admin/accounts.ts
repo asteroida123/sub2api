@@ -221,6 +221,19 @@ export default {
       accountSchedulingThresholdOverrideValue: 'Account threshold percent',
       accountSchedulingThresholdOverrideDisabledHint:
         'Use 1-100. The account becomes temporarily unschedulable after reaching this usage percent; 100 disables it for this account.',
+      windowProbe: {
+        stateFullPower: 'Full Power',
+        stateDegraded: 'Degraded',
+        stateCooldown: 'Cooling',
+        stateUnknown: 'Unprobed',
+        probing: 'Probing…',
+        probeNowHint: 'Click to run a fingerprint probe now (warning: probing pollutes the window clock for this exit)',
+        lastProbe: 'Last probe {time} (#{count})',
+        lastAnswer: 'Last answer: {answer}',
+        probeResultFullPower: '🎯 Full power window! Answer: {answer}',
+        probeResultDegraded: 'Degraded. Answer: {answer}',
+        probeResultError: 'Probe failed: {message}'
+      },
       status: {
         active: 'Active',
         inactive: 'Inactive',
