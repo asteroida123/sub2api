@@ -37,6 +37,7 @@ import adminComplianceAPI from './compliance'
 import auditAPI from './audit'
 import pluginsAPI from './plugins'
 import * as windowProbeAPI from './windowProbe'
+import * as windowHunterAPI from './windowHunter'
 
 /**
  * Unified admin API object for convenient access
@@ -75,7 +76,8 @@ export const adminAPI = {
   compliance: adminComplianceAPI,
   audit: auditAPI,
   plugins: pluginsAPI,
-  windowProbe: windowProbeAPI
+  windowProbe: windowProbeAPI,
+  windowHunter: windowHunterAPI
 }
 
 export {
@@ -112,7 +114,8 @@ export {
   adminComplianceAPI,
   auditAPI,
   pluginsAPI,
-  windowProbeAPI
+  windowProbeAPI,
+  windowHunterAPI
 }
 
 export default adminAPI
@@ -128,6 +131,17 @@ export type {
   WindowProbeResult,
   WindowProbeHealthState
 } from './windowProbe'
+export type {
+  WindowHunterCandidateResult,
+  WindowHunterRunEntry,
+  WindowHunterSettings,
+  WindowHunterStatus,
+  WindowSessionSnapshot,
+  WindowSessionSampleEvent,
+  WindowSessionPoolSnapshot,
+  WindowSessionPoolSettings,
+  ProxyDialSettings
+} from './windowHunter'
 export type { BalanceHistoryItem } from './users'
 export type { ErrorPassthroughRule, CreateRuleRequest, UpdateRuleRequest } from './errorPassthrough'
 export type { BackupAgentHealth, DataManagementConfig } from './dataManagement'
