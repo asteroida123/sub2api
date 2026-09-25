@@ -150,7 +150,7 @@ func subnetKeyOf(ipOrHost string) string {
 		}
 	}
 	if v4 := ip.To4(); v4 != nil {
-		return fmt.Sprintf("%d.%d.%d.%d/24", v4[0], v4[1], v4[2], v4[3])
+		return fmt.Sprintf("%d.%d.%d.0/24", v4[0], v4[1], v4[2])
 	}
 	// IPv6 /64
 	const slash64 = 64
@@ -521,6 +521,7 @@ func (h *WindowHunterService) runRound(ctx context.Context, entry *WindowHunterR
 
 		if candidateResult.Result == WindowProbeFullPower {
 			now := time.Now()
+			entry.HitProxyID = candidate.ID
 			h.mu.Lock()
 			h.roundsSinceHit = 0
 			h.nextRunAt = time.Time{} // 命中即停：不再自动排程
