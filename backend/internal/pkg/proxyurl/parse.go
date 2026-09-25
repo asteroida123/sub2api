@@ -18,6 +18,7 @@ var allowedSchemes = map[string]bool{
 	"https":   true,
 	"socks5":  true,
 	"socks5h": true,
+	"ss":      true,
 }
 
 // Parse 解析并验证代理 URL。

@@ -54,6 +54,11 @@ curl -X POST $BASE/window-session-pool/sample -d '{"account_id": 2474, "conn_id"
 
 ## 四、判定与记录表
 
+> **⚠️ 本实验已于 2026-09-26 以 wire 级方式执行完毕，结论见
+> `docs/window-hunter-ws-survival-verdict.md`：3/3 条 WS 在 T+265s 全部降智，
+> 而同时刻同出口对照 HTTP 请求仍满血 → 会话豁免证伪。本节的 sub2api 池内验收实验
+> 因此不再需要执行；保留本节作为历史规程。**
+
 | 会话 | 建立时间 | 判定时刻 (T0+) | result | answer 原文 | 备注 |
 |---|---|---|---|---|---|
 | conn_id_1 | T0+__s | +__s | | | |
@@ -64,6 +69,10 @@ curl -X POST $BASE/window-session-pool/sample -d '{"account_id": 2474, "conn_id"
 - **≥2/3 条在 T0+250s 后仍 full_power** → 会话池满血供货成立【实测】；
 - **≥2/3 条 degraded** → 会话豁免证伪（与 §9 一致）【实测】，池按 1h 强制寿命实现（现状即满足）；
 - **error 居多** → 仪器/执行问题（超时、token 过期、429），修因后重跑，不作判定。
+
+**注意**：执行本实验必须经 WS 入站。`chat/completions` 等 HTTP 入站会被
+`resolveOpenAIWSDecisionByClientTransport` 强制成 HTTP SSE 上游，不会建立上游 WS 长连接，
+对「WS 会话存活」命题零信息量（§9 与 `chain_hunter.py` 即因此失效）。
 
 ## 五、实验执行检查单
 

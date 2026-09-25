@@ -49,6 +49,13 @@
 
 ## P2：满血会话池 + 调度集成
 
+> **⚠️ 2026-09-26 更新：本期核心假设已被 wire 级实验证伪。**
+> `docs/window-hunter-ws-survival-verdict.md` 实测：窗口内建的 3 条上游 WS 在 T+265s 全部降智，
+> 而**同一时刻同出口的对照 HTTP 新请求仍满血**——预建会话劣化得比新请求更早，不存在会话缓冲。
+> 因此本节的「满血会话池」**不是供货机制**，其价值只剩「检测与门控」：
+> `RequireFullPower` 能识别某条池内连接此刻是否满血，采样能及时发现劣化，
+> 但拿不到「预建即长期满血」的收益。窗口命中后唯一成立的用法是**在窗口内立即承接真实业务**。
+
 ### 池条目扩展 `service/openai_ws_pool.go`
 - `openAIWSConn` 新增：`proxyID`（劣化回写定位 (账号,出口)）、`fullPowerUntilNano`
   （满血标记，UnixNano）、`lastSampleAtNano`、`degradedFlag`、`lastSampleAnswer`、
@@ -85,9 +92,9 @@
   `TestRequireFullPowerGate`（无满血→哨兵；有满血→优先选中）、`TestRetireDegradedConn`、
   `TestSampleFailureRevokesFullPower`、`TestWindowSessionPoolSettingsGateModel`、
   `MatchesGateModel` 边界（`gpt-6-astrox` 不误匹配）。
-- [ ] **验收实验（原样执行）**：`docs/window-hunter-p2-experiment.md`——窗口命中→预建 3 条
-  →跨 ~250s→逐条判定；结果决定池语义标注（存活=满血供货 / 劣化=1h 强制寿命）。
-  实验消耗预估 ~800-1300 token。
+- [x] **验收实验（2026-09-26 完成，wire 级）**：结论已回写 `docs/window-hunter-ws-survival-verdict.md`
+  ——3/3 条 WS 在 T+265s 降智（对照 HTTP 同刻仍满血）→ **会话豁免证伪**，池退化为 1h 强制寿命。
+  原「池内预建 3 条」的验收方式已被判定为对命题零信息量（HTTP 入站不建上游 WS），不再执行。
 
 ## P3：原生 Shadowsocks 拨号
 
@@ -103,12 +110,20 @@
 - 代理跳 TLS 豁免：ss 为对称加密隧道、无 TLS 握手，不涉及该开关（P1 已全量覆盖）。
 - 单测：`TestParseSSProxyURL`（凭据/端口校验）、`TestSSProxyDialerRejectsBadConfig`
   （坏方法/非 tcp 即失败）、`TestConfigureTransportProxySS`（DialContext 安装、Proxy 为空）。
+- **⚠️ 2026-09-26 补齐真实可达性（此前不可达）**：`internal/pkg/proxyurl/parse.go` 的
+  `allowedSchemes` 缺 `ss`，导致主网关 HTTP 上游 / 指纹探针 / 质量检测全部在
+  `normalizeProxyURL` → `proxyurl.Parse` 处失败（`http_upstream.go:1495` 的 `case "ss"` 永不可达）。
+  已补 `ss`，并同步 `handler/admin/account_data.go` 的 `validateDataProxy` 白名单。
+  **真实验证**：韩国 KT 家宽节点（`ss://aes-256-gcm:***@ce1fc2d8.krkt.hkssip.com:49642`）
+  经 `NewSSProxyDialer` 打到 `chatgpt.com/cdn-cgi/trace`（`loc=KR / colo=ICN`）。
 - 已知边界：ss 出口的 TLS 指纹在普通路径为标准库；需要指纹伪装走带 profile 的
-  DoWithTLS 路径（case "ss" → utls）。
+  DoWithTLS 路径（case "ss" → utls）。ss 仅支持 AEAD 套件（aes-128/256-gcm、
+  chacha20-ietf-poly1305）与 `blake3:psk` 格式密钥，**不支持 2022-blake3 系列与 plugin**。
 
-## 部署与验证（待用户批准）
+## 部署与验证
 
 1. 交叉编译：`CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -tags embed -o sub2api-custom ./cmd/server`
 2. 部署（二进制挂载覆盖，历史做法）→ 启动观察迁移 241 已在 P0 阶段应用。
-3. 按任务书流程：P1 真实验证（多国代理狩猎）→ P2 验收实验（见专文）→ 结果回写文档。
-4. 消耗告知：P2 实验约 800-1300 token + 狩猎探测每发 ~25 token；P3 无消耗（纯拨号层）。
+3. P1 真实验证（多国代理狩猎）待执行；P2 验收实验已以 wire 级方式完成（见判定文档），
+   结果显示 **P2 池的满血供货语义不成立**，部署收益仅剩检测与门控。
+4. 消耗告知：狩猎探测每发 ~25 token；P2 wire 级实验实测消耗约 20 发指纹（≈500 token）。
